@@ -5,6 +5,8 @@ interface Props {
   component: LightComponentType;
   onClick?: () => void;
   selected?: boolean;
+  isPowered?: boolean; // 回路是否带电
+  onDragStart?: (e: React.MouseEvent) => void;
 }
 
 // 根据色温计算颜色
@@ -31,23 +33,35 @@ function colorTemperatureToRGB(kelvin: number): string {
   return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
 }
 
-export function LightComponent({ component, onClick, selected }: Props) {
+export function LightComponent({ component, onClick, selected, isPowered = true, onDragStart }: Props) {
   const { x, y, properties } = component;
   const { name, status, brightness, colorTemperature, onColor, offColor } = properties;
   const { width, height } = COMPONENT_SIZE;
 
-  const lightColor = status
+  // 灯只有在有电且开启状态才会亮
+  const isLit = isPowered && status;
+  
+  const lightColor = isLit
     ? (onColor || colorTemperatureToRGB(colorTemperature))
     : (offColor || '#4A4A4A');
   
-  const opacity = status ? brightness / 100 : 0.3;
-  const glowIntensity = status ? (brightness / 100) * 8 : 0;
+  const opacity = isLit ? brightness / 100 : 0.3;
+  const glowIntensity = isLit ? (brightness / 100) * 8 : 0;
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDragStart?.(e);
+  };
 
   return (
     <g
       transform={`translate(${x}, ${y})`}
-      onClick={onClick}
-      style={{ cursor: 'pointer' }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick?.();
+      }}
+      onMouseDown={handleMouseDown}
+      style={{ cursor: 'move' }}
     >
       {/* 滤镜定义 */}
       <defs>
@@ -59,7 +73,7 @@ export function LightComponent({ component, onClick, selected }: Props) {
           </feMerge>
         </filter>
         <radialGradient id={`bulbGradient-${component.id}`} cx="50%" cy="30%" r="60%">
-          <stop offset="0%" stopColor={status ? '#FFFFFF' : '#666666'} stopOpacity={status ? 0.9 : 0.3} />
+          <stop offset="0%" stopColor={isLit ? '#FFFFFF' : '#666666'} stopOpacity={isLit ? 0.9 : 0.3} />
           <stop offset="100%" stopColor={lightColor} stopOpacity={opacity} />
         </radialGradient>
       </defs>
@@ -81,7 +95,7 @@ export function LightComponent({ component, onClick, selected }: Props) {
       )}
 
       {/* 灯泡外圈光晕 */}
-      {status && (
+      {isLit && (
         <ellipse
           cx={width / 2}
           cy={height / 2 - 5}
@@ -119,11 +133,11 @@ export function LightComponent({ component, onClick, selected }: Props) {
         rx={20}
         ry={18}
         fill={`url(#bulbGradient-${component.id})`}
-        stroke={status ? lightColor : '#555555'}
+        stroke={isLit ? lightColor : '#555555'}
         strokeWidth={2}
-        filter={status ? `url(#lightGlow-${component.id})` : 'none'}
+        filter={isLit ? `url(#lightGlow-${component.id})` : 'none'}
       >
-        {status && (
+        {isLit && (
           <animate
             attributeName="stroke-opacity"
             values="1;0.6;1"
@@ -139,10 +153,35 @@ export function LightComponent({ component, onClick, selected }: Props) {
             Q${width / 2 - 3},${height / 2 - 8} ${width / 2},${height / 2 - 2}
             Q${width / 2 + 3},${height / 2 + 4} ${width / 2 + 6},${height / 2 - 2}`}
         fill="none"
-        stroke={status ? '#FFEB3B' : '#666666'}
+        stroke={isLit ? '#FFEB3B' : '#666666'}
         strokeWidth={1.5}
-        opacity={status ? 0.8 : 0.3}
+        opacity={isLit ? 0.8 : 0.3}
       />
+
+      {/* 无电指示（当没有供电时） */}
+      {!isPowered && (
+        <g>
+          <line
+            x1={width / 2 - 12}
+            y1={height / 2 - 15}
+            x2={width / 2 + 12}
+            y2={height / 2 + 5}
+            stroke="#EF5350"
+            strokeWidth={2}
+            strokeLinecap="round"
+          />
+          <text
+            x={width / 2}
+            y={height / 2 + 25}
+            textAnchor="middle"
+            fill="#EF5350"
+            fontSize={7}
+            fontWeight="bold"
+          >
+            无电
+          </text>
+        </g>
+      )}
 
       {/* 连接端口 - 左侧 */}
       <circle
@@ -162,6 +201,16 @@ export function LightComponent({ component, onClick, selected }: Props) {
         strokeWidth={1}
       />
 
+      {/* 网络连接端口（用于与网关通信） */}
+      <circle
+        cx={width / 2}
+        cy={height}
+        r={3}
+        fill="#1976D2"
+        stroke="#fff"
+        strokeWidth={1}
+      />
+
       {/* 名称标签 */}
       <text
         x={width / 2}
@@ -176,19 +225,16 @@ export function LightComponent({ component, onClick, selected }: Props) {
       </text>
 
       {/* 参数显示 */}
-      {status && (
-        <text
-          x={width / 2}
-          y={height + 28}
-          textAnchor="middle"
-          fill="#BDBDBD"
-          fontSize={9}
-          fontFamily="'SF Pro Display', -apple-system, sans-serif"
-        >
-          {brightness}% · {colorTemperature}K
-        </text>
-      )}
+      <text
+        x={width / 2}
+        y={height + 28}
+        textAnchor="middle"
+        fill={isLit ? '#BDBDBD' : '#757575'}
+        fontSize={9}
+        fontFamily="'SF Pro Display', -apple-system, sans-serif"
+      >
+        {isLit ? `${brightness}% · ${colorTemperature}K` : (isPowered ? '已关闭' : '无供电')}
+      </text>
     </g>
   );
 }
-
